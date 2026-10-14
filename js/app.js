@@ -400,6 +400,7 @@
   }
 
   const CHANGELOG = {
+    'sunpad-v39': 'v39：提醒升级系统级通知（SW通道支持iOS主屏+设置页授权按钮+通知点击聚焦）',
     'sunpad-v38': 'v38：架构升级——主逻辑拆分为10个页面模块+回归冒烟测试网',
     'sunpad-v37': 'v37：深度洞察——周报/月报/趋势报告一键生成',
     'sunpad-v32': 'v32：修复经期日历日期错位（CSS Grid列被撑大导致）',
@@ -471,9 +472,19 @@
     let lastFired = {};
     const fire = (label, sub) => {
       C.Toast(`${label} 时间到 · ${sub}`, 6000);
+      /* 系统级通知：优先 Service Worker 通道（iOS 主屏 PWA 唯一可用通道，桌面/Android 通用），
+         回退 new Notification；都失败时静默，上方 Toast 已兜底 */
       try {
         if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification(label + ' 时间到', { body: sub });
+          const title = label + ' 时间到';
+          const opt = { body: sub, tag: 'sunpad-reminder', icon: './icons/icon-192.png' };
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.ready
+              .then(r => r.showNotification(title, opt))
+              .catch(() => { try { new Notification(title, opt); } catch (e) {} });
+          } else {
+            new Notification(title, opt);
+          }
         }
       } catch (e) {}
     };
@@ -602,7 +613,29 @@
     };
     sec4.appendChild(remRow('sleep', '🌙 早睡提醒', '建议 23:00 前'));
     sec4.appendChild(remRow('wake', '🌅 早起提醒', '建议 09:00 前'));
-    const note = el('div', 'set-note', 'ℹ️ iOS 系统限制：纯前端无法在锁屏/后台弹系统通知。本提醒在工作台打开时到点弹出，请确保当日用过本 App。需要锁屏提醒请用手机自带闹钟。');
+    /* 系统通知权限（本地零后端方案：App 打开期间到点弹系统级通知） */
+    const notifyRow = el('div', 'set-row');
+    notifyRow.innerHTML = `<div><div class="sr-label">🔔 系统通知</div><div class="sr-sub">授权后到点弹系统级通知（iOS 需从主屏幕图标打开本应用）</div></div>`;
+    const notifyBtn = el('button', 'btn-pill', '去授权');
+    const syncNotifyBtn = () => {
+      if (!('Notification' in window)) { notifyBtn.textContent = '不支持'; notifyBtn.disabled = true; return; }
+      const p = Notification.permission;
+      notifyBtn.textContent = p === 'granted' ? '已授权 ✓' : (p === 'denied' ? '被拒绝' : '去授权');
+      if (p === 'denied') notifyBtn.disabled = true;
+    };
+    syncNotifyBtn();
+    notifyBtn.onclick = () => {
+      if (!('Notification' in window)) return;
+      Promise.resolve(Notification.requestPermission()).then(p => {
+        syncNotifyBtn();
+        C.Toast(p === 'granted' ? '系统通知已开启 🔔' : '未获得通知权限');
+      }).catch(() => {});
+    };
+    const notifyCtrl = el('div', 'sr-ctrl');
+    notifyCtrl.appendChild(notifyBtn);
+    notifyRow.appendChild(notifyCtrl);
+    sec4.appendChild(notifyRow);
+    const note = el('div', 'set-note', 'ℹ️ 纯前端限制：锁屏/后台推送需 Web Push 服务端（已评估不做，国内 Chrome 推送通道 FCM 不可达）。已授权系统通知时，App 打开期间到点会弹系统级通知；未授权则弹应用内提醒。需要完全离线的锁屏提醒请用手机自带闹钟。');
     sec4.appendChild(note);
     sheet.appendChild(sec4);
 

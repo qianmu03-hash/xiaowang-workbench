@@ -1,5 +1,5 @@
 /* 小王的工作台 — Service Worker：核心文件离线缓存 */
-const CACHE = 'sunpad-v38'; // 每次部署若业务文件有改动，必须 bump 此版本号，否则浏览器不会拉取新 SW
+const CACHE = 'sunpad-v39'; // 每次部署若业务文件有改动，必须 bump 此版本号，否则浏览器不会拉取新 SW
 const ASSETS = [
   './',
   './index.html',
@@ -50,6 +50,16 @@ self.addEventListener('activate', e => {
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
+  );
+});
+
+/* 系统通知被点击：聚焦已打开的工作台窗口，没有则打开新窗口 */
+self.addEventListener('notificationclick', e => {
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const c of list) { if ('focus' in c) return c.focus(); }
+      return self.clients.openWindow('./');
+    })
   );
 });
 
