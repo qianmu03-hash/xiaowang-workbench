@@ -233,9 +233,27 @@ for (let round = 1; round <= 2; round++) {
   check('洞察新功能无报错', errors.length === b2, b2 + '→' + errors.length);
 }
 
-console.log('\n汇总: ' + pass + ' 通过 / ' + fail + ' 失败');
-if (errors.length) {
-  console.log('\n捕获到的错误（' + errors.length + '）:');
-  [...new Set(errors)].slice(0, 15).forEach(e => console.log('  ' + e));
-}
-process.exit(fail || errors.length ? 1 : 0);
+/* ---------- v42 新闻换源：异步链路（fetch 打桩全拒 → 应回退本地并标注离线） ----------
+   新闻渲染的实时链路是 Promise，微任务要等同步代码跑完才冲刷，
+   因此汇总打印也一并挪进 setTimeout，先补这几条异步断言。 */
+setTimeout(() => {
+  win.App.go('news');
+  const panel = win.document.getElementById('panel');
+  check('新闻页有横幅', !!panel.querySelector('.news-banner'));
+  setTimeout(() => {
+    const sub = panel.querySelector('#newsSub');
+    const subText = sub ? sub.textContent : '';
+    check('实时源失败回退标注「离线精选」', subText.includes('离线精选'), subText);
+    const rows = panel.querySelectorAll('.news-item');
+    check('回退后本地新闻列表有内容', rows.length >= 5, rows.length + ' 条');
+
+    console.log('\n汇总: ' + pass + ' 通过 / ' + fail + ' 失败');
+    if (errors.length) {
+      console.log('\n捕获到的错误（' + errors.length + '）:');
+      [...new Set(errors)].slice(0, 15).forEach(e => console.log('  ' + e));
+    }
+    process.exit(fail || errors.length ? 1 : 0);
+  }, 60);
+}, 60);
+
+/* 注意：不要在本行之后再加同步断言——汇总输出已由上方 setTimeout 接管 */

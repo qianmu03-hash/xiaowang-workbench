@@ -309,7 +309,7 @@
       C.Toast('已记录 ✓'); close(); renderLedger();
     };
     document.body.appendChild(mask);
-    setTimeout(() => $('#nAmt').focus(), 100);
+    setTimeout(() => { const t = $('#nAmt'); if (t) t.focus(); }, 100);
   }
 
   function openRecurringModal(onDone) {
@@ -339,7 +339,7 @@
       C.Toast('已添加 ✓'); close(); onDone && onDone();
     };
     document.body.appendChild(mask);
-    setTimeout(() => $('#rName').focus(), 100);
+    setTimeout(() => { const t = $('#rName'); if (t) t.focus(); }, 100);
   }
 
   function prevMonth(m) {

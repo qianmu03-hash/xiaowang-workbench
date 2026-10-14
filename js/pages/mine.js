@@ -529,7 +529,7 @@
     const box = $('#panel'); box.innerHTML = '';
     const ph = el('div', 'page-head'); ph.innerHTML = `<div class="ph-ic">ℹ️</div><div><h2>关于</h2></div>`; box.appendChild(ph);
     const card = el('div', 'card');
-    card.innerHTML = `<div class="hero-card" style="border-radius:var(--r);margin-bottom:12px"><div><div style="font-size:20px;font-weight:800">小王的工作台</div><div style="opacity:.85;margin-top:4px">sunpad · v41</div></div></div>
+    card.innerHTML = `<div class="hero-card" style="border-radius:var(--r);margin-bottom:12px"><div><div style="font-size:20px;font-weight:800">小王的工作台</div><div style="opacity:.85;margin-top:4px">sunpad · v42</div></div></div>
       <div class="set-about">
         你的个人专属工作台 · 纯前端 PWA<br>
         涵盖 健身 / 舞蹈 / 创作 / 妆容 / 英语 / 粤语 / 阅读 / 数据 / 记账 / 提醒 / 菜谱 / 新闻 / 天气 / 经期 / 习惯 / 心情<br><br>

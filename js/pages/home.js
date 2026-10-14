@@ -341,7 +341,7 @@
       saveTasks(tasks); close(); renderHome();
     };
     document.body.appendChild(mask);
-    setTimeout(() => $('#mTask').focus(), 100);
+    setTimeout(() => { const t = $('#mTask'); if (t) t.focus(); }, 100);
   }
 
   /* ==========================================================
@@ -374,7 +374,7 @@
       S.set('ledger', all); C.Toast('已记录 ✓'); close(); renderHome();
     };
     document.body.appendChild(mask);
-    setTimeout(() => $('#qAmt').focus(), 100);
+    setTimeout(() => { const t = $('#qAmt'); if (t) t.focus(); }, 100);
   }
 
   /* ==========================================================

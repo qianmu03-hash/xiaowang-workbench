@@ -151,7 +151,7 @@
       loading.style.display = 'none';
       list.innerHTML = '';
       const sub = $('#newsSub');
-      if (sub) sub.textContent = C.todayStr() + (isLive ? ' · 实时要闻' : ' · 精选要闻');
+      if (sub) sub.textContent = C.todayStr() + (isLive ? ' · 实时要闻' : ' · 离线精选（实时源暂不可用）');
       items.forEach((x, i) => {
         const row = el('div', 'news-item');
         const meta = isLive
@@ -176,7 +176,10 @@
     }
 
     const cache = S.get('liveNewsCache', null);
-    if (cache && cache.ts && (Date.now() - cache.ts < 30 * 60 * 1000) && cache.list && cache.list.length) {
+    /* 旧版缓存结构兼容：有 link 才当实时（否则点开是百度搜索） */
+    const cacheOk = cache && cache.ts && (Date.now() - cache.ts < 30 * 60 * 1000)
+      && cache.list && cache.list.length && cache.list.some(x => x.link);
+    if (cacheOk) {
       renderList(cache.list, true);
       return;
     }
@@ -200,41 +203,84 @@
     });
   }
 
-  /* 经公开代理(allorigins)拉取中文 RSS 实时新闻；合并多源、按时间排序。
-     注意：免费代理对中文源稳定性有限（多数源会 500/空），因此：
-     ① 多源候选、任一可用即合并；② 实时不足 10 条则回退本地 NEWS_POOL，保证不白屏。
-     若要彻底稳定，需「真后端」自建代理（见后续扩展）。 */
-  async function loadLiveNews() {
-    const feeds = [
-      { name: '36氪', url: 'https://36kr.com/feed' },
-      { name: 'cnBeta', url: 'https://www.cnbeta.com/backend.php' },
-      { name: '少数派', url: 'https://sspai.com/feed' },
-      { name: '人民网', url: 'http://www.people.com.cn/rss/politics.xml' }
-    ];
-    const proxy = u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u);
+  /* 实时新闻：双通道拉取（v41.2 换源）。
+     源清单经 2026-10-14 实测筛选：36氪经 rss2json 服务端抓取可绕过反爬；
+     cnBeta/少数派直连不稳、人民网 RSS 冻结于 2025-06 —— 已全部拉黑。
+     通道A（首选）：rss2json.com 把 RSS 转 JSON，自带 CORS（*），浏览器直连。
+     通道B（兜底）：api.allorigins.win 裸代理拉 XML（服务偶发 408/超时，仅兜底）。
+     两通道都挂则回退本地 NEWS_POOL（renderList 标「离线精选」，不冒充实时）。 */
+  const NEWS_FEEDS = [
+    { name: 'IT之家', url: 'https://www.ithome.com/rss' },
+    { name: '36氪', url: 'https://36kr.com/feed' },
+    { name: '少数派', url: 'https://sspai.com/feed' },
+    { name: '极客公园', url: 'https://www.geekpark.net/rss' },
+    { name: '量子位', url: 'https://www.qbitai.com/feed' },
+    { name: '爱范儿', url: 'https://www.ifanr.com/feed' }
+  ];
+  const NEWS_TIMEOUT_MS = 9000;
+
+  function parseRssXml(txt, name) {
     const out = [];
+    const doc = new DOMParser().parseFromString(txt, 'text/xml');
+    doc.querySelectorAll('item, entry').forEach(it => {
+      const title = (it.querySelector('title')?.textContent || '').trim();
+      if (!title) return;
+      const linkEl = it.querySelector('link');
+      const link = (linkEl?.textContent || linkEl?.getAttribute('href') || '').trim();
+      const dEl = it.querySelector('pubDate, published, updated');
+      const raw = dEl?.textContent?.trim() || '';
+      out.push({ t: title, src: name, link, time: fmtNewsTime(raw), ts: Date.parse(raw) || 0 });
+    });
+    return out;
+  }
+
+  async function fetchViaRss2json(f, signal) {
+    const u = 'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(f.url) + '&count=20';
+    const res = await fetch(u, { signal, cache: 'no-store' });
+    if (!res.ok) return [];
+    const j = await res.json();
+    if (j.status !== 'ok' || !Array.isArray(j.items)) return [];
+    return j.items.map(x => ({
+      t: (x.title || '').trim(),
+      src: f.name,
+      link: (x.link || '').trim(),
+      time: fmtNewsTime(x.pubDate || ''),
+      ts: Date.parse(x.pubDate) || 0
+    })).filter(x => x.t);
+  }
+
+  async function fetchViaAllorigins(f, signal) {
+    const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(f.url), { signal, cache: 'no-store' });
+    if (!res.ok) return [];
+    return parseRssXml(await res.text(), f.name);
+  }
+
+  async function loadLiveNews() {
     const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 9000);
-    await Promise.all(feeds.map(f => (async () => {
+    const to = setTimeout(() => ctrl.abort(), NEWS_TIMEOUT_MS);
+    const out = [];
+    /* 先整批走通道A；A 一条都没出（服务挂/被墙）才整批降级通道B */
+    let viaA = 0;
+    const results = await Promise.all(NEWS_FEEDS.map(async f => {
       try {
-        const res = await fetch(proxy(f.url), { signal: ctrl.signal, cache: 'no-store' });
-        if (!res.ok) return;
-        const txt = await res.text();
-        const doc = new DOMParser().parseFromString(txt, 'text/xml');
-        doc.querySelectorAll('item, entry').forEach(it => {
-          const title = (it.querySelector('title')?.textContent || '').trim();
-          if (!title) return;
-          const linkEl = it.querySelector('link');
-          const link = (linkEl?.textContent || linkEl?.getAttribute('href') || '').trim();
-          const dEl = it.querySelector('pubDate, published, updated');
-          const raw = dEl?.textContent?.trim() || '';
-          out.push({ t: title, src: f.name, link, time: fmtNewsTime(raw), ts: Date.parse(raw) || 0 });
-        });
-      } catch (e) { /* 忽略单源失败，继续合并其他源 */ }
-    })()));
+        let r = await fetchViaRss2json(f, ctrl.signal);
+        if (r.length) viaA++;
+        if (!r.length) r = await fetchViaAllorigins(f, ctrl.signal);
+        return r;
+      } catch (e) { return []; }
+    }));
+    results.forEach(r => { if (r.length) out.push(...r); });
     clearTimeout(to);
-    out.sort((a, b) => b.ts - a.ts);
-    return out.slice(0, 22);
+    if (!viaA) console.info('[news] rss2json 全部失败，已尝试 allorigins 兜底');
+    /* 按时间去重排序（同题多源只留最新），取 30 条 */
+    const seen = new Set();
+    const uniq = [];
+    out.sort((a, b) => b.ts - a.ts).forEach(x => {
+      const k = x.t.slice(0, 24);
+      if (seen.has(k)) return;
+      seen.add(k); uniq.push(x);
+    });
+    return uniq.slice(0, 30);
   }
 
   function fmtNewsTime(dateStr) {
