@@ -1,0 +1,18 @@
+{
+  "name": "小王的工作台",
+  "short_name": "小王工作台",
+  "description": "小王的个人专属工作台：健身、舞蹈、创作、妆容、英语、粤语、阅读、学习、记账、提醒、菜谱、经期、习惯、心情、新闻、天气、美妆、徽章，每日自动更新",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F1EDFB",
+  "theme_color": "#8B6FD8",
+  "lang": "zh-CN",
+  "categories": ["lifestyle", "productivity", "education", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
