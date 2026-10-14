@@ -173,6 +173,66 @@ for (let round = 1; round <= 2; round++) {
   check('首页新功能无报错', errors.length === b4, b4 + '→' + errors.length);
 }
 
+/* ---------- v41 数据玩法：周期账单 / 预算预测 / 关联洞察 / 月度海报 ---------- */
+{
+  /* 埋数据：预算 500（用于月底预测行） */
+  try { win.localStorage.setItem('sunpad:budget', '500'); } catch (e) {}
+
+  const b1 = errors.length;
+  win.App.go('ledger');
+  let panel = win.document.getElementById('panel');
+  const cards = [...panel.querySelectorAll('.card-title')].map(x => x.textContent);
+  check('记账页有周期账单卡片', cards.some(t => t.includes('周期账单')), cards.length + ' 张卡');
+  check('预算卡带月底预测行', panel.textContent.includes('月底约'));
+
+  /* 新增周期账单弹窗 → 保存 → 行出现 */
+  const addBtn = [...panel.querySelectorAll('button')].find(b => b.textContent.includes('新增周期账单'));
+  check('有「新增周期账单」按钮', !!addBtn);
+  if (addBtn) addBtn.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  check('周期账单弹窗打开', !!win.document.querySelector('.modal-mask #rName'));
+  const rName = win.document.querySelector('#rName');
+  if (rName) {
+    win.document.querySelector('#rName').value = '冒烟房租';
+    win.document.querySelector('#rAmt').value = '1000';
+    win.document.querySelector('#rDay').value = '1';
+    win.document.querySelector('.modal-mask .m-btn.ok').dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    panel = win.document.getElementById('panel');
+    check('保存后周期账单行出现', panel.textContent.includes('冒烟房租'));
+  }
+  /* 一键记入：点「记」→ 本月已记 */
+  const recRow = [...panel.querySelectorAll('.bl-item')].find(r => r.textContent.includes('冒烟房租'));
+  if (recRow) {
+    recRow.querySelector('.hc-plus').dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    panel = win.document.getElementById('panel');
+    const row2 = [...panel.querySelectorAll('.bl-item')].find(r => r.textContent.includes('冒烟房租'));
+    check('一键记入后状态变已记', !!(row2 && row2.textContent.includes('已记')));
+    /* 清理：删除该周期项 + 其记账行，避免污染后续 */
+    const led = JSON.parse(win.localStorage.getItem('sunpad:ledger') || '[]').filter(x => !x.note || x.note !== '冒烟房租');
+    win.localStorage.setItem('sunpad:ledger', JSON.stringify(led));
+    const recs = JSON.parse(win.localStorage.getItem('sunpad:recurring') || '[]').filter(x => x.name !== '冒烟房租');
+    win.localStorage.setItem('sunpad:recurring', JSON.stringify(recs));
+  }
+  check('周期账单流程无报错', errors.length === b1, b1 + '→' + errors.length);
+
+  /* 深度洞察：关联卡片 + 月度海报 */
+  const b2 = errors.length;
+  win.App.go('insights');
+  panel = win.document.getElementById('panel');
+  check('洞察页有运动×心情卡片', panel.textContent.includes('运动 × 心情'));
+  const pBtn = [...panel.querySelectorAll('button')].find(b => b.textContent.includes('生成本月海报'));
+  check('洞察页有生成海报按钮', !!pBtn);
+  if (pBtn) pBtn.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  const pm = win.document.querySelector('.modal-mask');
+  check('海报弹窗打开', !!(pm && pm.textContent.includes('回顾海报')));
+  if (pm) {
+    /* jsdom 无 canvas 实现 → 应走文字降级，且不报错 */
+    const hasAlt = pm.querySelector('pre');
+    check('海报降级为文字预览（jsdom）', !!hasAlt);
+    pm.remove();
+  }
+  check('洞察新功能无报错', errors.length === b2, b2 + '→' + errors.length);
+}
+
 console.log('\n汇总: ' + pass + ' 通过 / ' + fail + ' 失败');
 if (errors.length) {
   console.log('\n捕获到的错误（' + errors.length + '）:');

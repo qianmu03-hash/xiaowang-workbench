@@ -176,7 +176,36 @@
   }
 
   /* ==========================================================
-     6) 一键报告文本
+     6) 运动 × 心情 关联分析（纯计算）
+     actDates: Set/array/string[] 发生了运动的日期
+     md: {date:{level(1-5),...}}
+     仅统计两侧都覆盖不足时返回 insufficient，避免样本太少误判
+     ========================================================== */
+  function activityMood(actDates, md, from, to) {
+    md = md || {};
+    const act = actDates instanceof Set ? actDates : new Set(Array.isArray(actDates) ? actDates : []);
+    const actLv = [], restLv = [];
+    for (let d = parseYmd(from); ymd(d) <= to; d = addDays(d, 1)) {
+      const key = ymd(d), r = md[key];
+      if (!r || !r.level) continue;
+      (act.has(key) ? actLv : restLv).push(r.level);
+    }
+    const avgOf = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
+    const avgAct = avgOf(actLv), avgRest = avgOf(restLv);
+    if (actLv.length < 2 || restLv.length < 2) {
+      return { status: 'insufficient', actDays: actLv.length, restDays: restLv.length, avgAct, avgRest };
+    }
+    const delta = avgAct - avgRest;
+    const verdict = delta >= 0.4 ? 'better' : delta <= -0.4 ? 'worse' : 'flat';
+    return {
+      status: 'ok', actDays: actLv.length, restDays: restLv.length,
+      avgAct, avgRest, delta, verdict,
+      diffPct: avgRest ? Math.round(delta / avgRest * 100) : 0
+    };
+  }
+
+  /* ==========================================================
+     7) 一键报告文本
      b: {ledger, habits, mood, bodylog, clusters, pred, cats?, today?}
      cats: 分类映射 {key:{i:'🍜',n:'餐饮'}}（可选，用于可读分类名）
      ========================================================== */
@@ -280,6 +309,7 @@
 
   global.Insights = {
     ledgerRange, habitWindow, moodWindow, weightTrend, periodInsight,
+    activityMood,
     buildReport, weeklyReport, monthlyReport
   };
 })(typeof window !== 'undefined' ? window : globalThis);

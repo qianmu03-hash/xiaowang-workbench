@@ -180,7 +180,7 @@
       });
     };
 
-    /* 月度预算进度 */
+    /* 月度预算进度 + 月底预测 */
     const budget = S.get('budget', 0);
     if (budget > 0) {
       const pct = Math.min(100, Math.round(outM / budget * 100));
@@ -191,10 +191,73 @@
           <div class="budget-num"><span>已花 ${C.fmtMoney(outM)}</span>
             <span class="${over ? 'over' : ''}">${over ? '超支 ' : '预算 '}${C.fmtMoney(budget)} · ${pct}%</span></div>
           <div class="sc-progress"><i style="width:${pct}%;background:${over ? 'var(--danger)' : 'linear-gradient(90deg,var(--primary),var(--accent))'}"></i></div>`;
+        /* 月底预测：按已过天数日均推算（仅当前月有意义） */
+        if (month === C.monthStr()) {
+          const y0 = parseInt(month.slice(0, 4)), m0 = parseInt(month.slice(5, 7));
+          const dim = new Date(y0, m0, 0).getDate();
+          const dayNow = new Date().getDate();
+          const fc = Math.round(outM / Math.max(1, dayNow) * dim);
+          const diff = fc - budget;
+          const fcLine = el('div', 'set-note');
+          fcLine.style.marginTop = '5px';
+          if (fc > budget) {
+            fcLine.innerHTML = `⚠️ 按当前节奏月底约 <b style="color:var(--danger)">${C.fmtMoney(fc)}</b>，预计超支 ${C.fmtMoney(diff)}`;
+          } else {
+            fcLine.innerHTML = `✅ 按当前节奏月底约 <b>${C.fmtMoney(fc)}</b>，预计结余 ${C.fmtMoney(-diff)}`;
+          }
+          w.appendChild(fcLine);
+        }
         return w;
       })());
       box.appendChild(bCard);
     }
+
+    /* 周期账单：房租/会员等固定支出，到期一键记入 */
+    const recs = S.get('recurring', []);
+    const recCard = card('📅 周期账单', '📅', (() => {
+      const w = el('div', '');
+      if (!recs.length) {
+        w.appendChild(el('div', 'empty', `<span class="em-ic">🗓️</span>还没有周期账单，点下方添加房租/会员等固定支出`));
+        return w;
+      }
+      const isCur = month === C.monthStr();
+      const dayNow = new Date().getDate();
+      recs.forEach((r, idx) => {
+        const recorded = all.some(x => x.recId === r.id && x.date.startsWith(month));
+        const due = isCur && dayNow >= (r.day || 1);
+        const row = el('div', 'bl-item');
+        let status, sCls;
+        if (recorded) { status = '✓ 本月已记'; sCls = 'rec-done'; }
+        else if (due) { status = '⚠ 到期未记'; sCls = 'rec-due'; }
+        else { status = `每月 ${r.day || 1} 日`; sCls = 'rec-wait'; }
+        row.innerHTML = `
+          <div class="bl-cat">${(CATS[r.cat] || CATS.extra).i}</div>
+          <div class="bl-info">
+            <div class="bl-name">${C.esc(r.name)}</div>
+            <div class="bl-note">${C.fmtMoney(r.amt)}/月 · ${status}</div>
+          </div>
+          <button class="hc-plus ${sCls}">${recorded ? '✓' : '记'}</button>
+          <button class="bl-del">✕</button>`;
+        const btn = row.querySelector('.hc-plus');
+        if (recorded) btn.disabled = true;
+        else btn.onclick = () => {
+          const today = C.todayStr();
+          const arr = ledgerAll();
+          arr.push({ ts: Date.now(), date: today, type: r.type || 'out', cat: r.cat || 'extra', amt: r.amt, note: r.name, recId: r.id });
+          S.set('ledger', arr);
+          C.Toast(`已记入「${r.name}」✓`); renderLedger();
+        };
+        row.querySelector('.bl-del').onclick = () => {
+          recs.splice(idx, 1); S.set('recurring', recs); renderLedger();
+        };
+        w.appendChild(row);
+      });
+      return w;
+    })());
+    box.appendChild(recCard);
+    const addRec = el('button', 'rm-add', '＋ 新增周期账单');
+    addRec.onclick = () => openRecurringModal(() => renderLedger());
+    box.appendChild(addRec);
 
     /* 明细 */
     const rows = monthRows.slice().sort((a, b) => b.ts - a.ts);
@@ -247,6 +310,36 @@
     };
     document.body.appendChild(mask);
     setTimeout(() => $('#nAmt').focus(), 100);
+  }
+
+  function openRecurringModal(onDone) {
+    const mask = el('div', 'modal-mask');
+    const m = el('div', 'modal');
+    m.innerHTML = `
+      <h3>📅 新增周期账单</h3>
+      <div class="modal-field"><label>名称</label><input id="rName" maxlength="12" placeholder="如：房租 / 视频会员"></div>
+      <div class="modal-field"><label>金额（元/月）</label><input type="number" id="rAmt" inputmode="decimal" placeholder="如：1200"></div>
+      <div class="modal-field"><label>分类</label>
+        <select id="rCat">${Object.entries(CATS).map(([k, v]) => `<option value="${k}">${v.i}${v.n}</option>`).join('')}</select></div>
+      <div class="modal-field"><label>每月几号扣款（1–31）</label><input type="number" id="rDay" min="1" max="31" value="1"></div>
+      <div class="modal-actions"><button class="m-btn cancel">取消</button><button class="m-btn ok">保存</button></div>`;
+    mask.appendChild(m);
+    const close = () => mask.remove();
+    mask.onclick = e => { if (e.target === mask) close(); };
+    m.querySelector('.cancel').onclick = close;
+    m.querySelector('.ok').onclick = () => {
+      const name = $('#rName').value.trim();
+      const amt = parseFloat($('#rAmt').value);
+      const day = Math.min(31, Math.max(1, parseInt($('#rDay').value) || 1));
+      if (!name) return C.Toast('请输入名称');
+      if (!amt || amt <= 0) return C.Toast('请输入有效金额');
+      const recs = S.get('recurring', []);
+      recs.push({ id: C.uid(), name, amt: Math.round(amt * 100) / 100, cat: $('#rCat').value, day, type: 'out' });
+      S.set('recurring', recs);
+      C.Toast('已添加 ✓'); close(); onDone && onDone();
+    };
+    document.body.appendChild(mask);
+    setTimeout(() => $('#rName').focus(), 100);
   }
 
   function prevMonth(m) {

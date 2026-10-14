@@ -935,3 +935,9 @@ body[data-theme="dark"] .mood-trend{background:#1E1838}
 .note-tx{flex:1;min-width:0;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .note-time{font-size:11px;color:var(--text-3);flex:0 0 auto}
 .note-more{width:100%;margin-top:8px;padding:7px;border:none;background:var(--card-soft);border-radius:9px;color:var(--primary-deep);font-size:12px;font-weight:700;cursor:pointer}
+
+/* ===== v41 数据玩法：周期账单状态 ===== */
+.hc-plus.rec-done{background:var(--ok-soft,#e6f7ef);color:#18a06a;opacity:.75}
+.hc-plus.rec-due{background:#ffe9e9;color:var(--danger);animation:recPulse 1.6s ease-in-out infinite}
+.hc-plus.rec-wait{background:var(--card-soft);color:var(--text-3)}
+@keyframes recPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}

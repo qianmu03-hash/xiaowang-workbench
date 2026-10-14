@@ -357,9 +357,169 @@
       box.appendChild(card('🌸 周期洞察', '🌸', s));
     }
 
+    /* ---------- ⑦ 运动 × 心情 关联洞察（v41） ---------- */
+    /* 扫按天键 sunpad:fitDone:YYYY-MM-DD / danceDone:… 还原近30天运动日 */
+    const actDates = new Set();
+    const corFrom = ymd(addDays(today, -29));
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k) continue;
+        const m = k.match(/^sunpad:(?:fitDone|danceDone):(\d{4}-\d{2}-\d{2})$/);
+        if (m && m[1] >= corFrom) actDates.add(m[1]);
+      }
+    } catch (e) {}
+    const cor = I.activityMood(actDates, mood, corFrom, mTo);
+    let corBody;
+    if (cor.status === 'ok') {
+      const better = cor.verdict === 'better', worse = cor.verdict === 'worse';
+      const icon = better ? '🔥' : worse ? '🐌' : '➡️';
+      const text = better ? `运动日心情平均高 ${cor.delta.toFixed(1)} 分（${cor.diffPct}%），运动真的让你更开心！`
+        : worse ? `运动日心情平均低 ${Math.abs(cor.delta).toFixed(1)} 分，可能运动量偏大，注意休息`
+        : `运动日与非运动日心情基本持平（差 ${Math.abs(cor.delta).toFixed(1)} 分）`;
+      corBody = `
+        <div class="stat-grid">
+          <div class="stat-card"><div class="sc-num">${cor.avgAct.toFixed(1)}</div><div class="sc-label">运动日心情 /5</div></div>
+          <div class="stat-card"><div class="sc-num">${cor.avgRest.toFixed(1)}</div><div class="sc-label">非运动日 /5</div></div>
+          <div class="stat-card"><div class="sc-num" style="color:${better ? 'var(--ok)' : worse ? 'var(--danger)' : 'var(--text-2)'}">${cor.delta > 0 ? '+' : ''}${cor.delta.toFixed(1)}</div><div class="sc-label">差值</div></div>
+          <div class="stat-card"><div class="sc-num">${cor.actDays}/${cor.actDays + cor.restDays}</div><div class="sc-label">运动天数</div></div>
+        </div>
+        <div class="set-note" style="margin-top:8px">${icon} ${text}</div>`;
+    } else {
+      corBody = `<div class="set-note">近30天运动日（${cor.actDays} 天）或对照日心情记录（${cor.restDays} 天）不足 2 天，再记录几天就能看到关联结论。</div>`;
+    }
+    box.appendChild(card('🏃 运动 × 心情 关联（近30天）', '🏃', corBody));
+
+    /* ---------- ⑧ 月度回顾海报（v41 · canvas 生成 PNG） ---------- */
+    const posterCard = card('🖼️ 月度回顾海报', '🖼️', `
+      <div class="set-note">把本月收支、习惯、心情、运动汇总成一张图，可保存/分享。</div>`);
+    const pBtn = el('button', 'btn-pill on', '🎨 生成本月海报');
+    pBtn.style.marginTop = '8px';
+    pBtn.onclick = () => openPoster({
+      month: mFrom.slice(0, 7),
+      income: lm.income, expense: lm.expense, balance: lm.balance,
+      habitPct: hw.habits.length ? hw.overallPct : null,
+      habitDays: `${hw.activeDays}/${hw.dayCount}`,
+      moodAvg: mw.count ? mw.avg : null, moodDays: mw.count,
+      actDays: actDates.size, bodyDelta: wt.count ? wt.delta : null
+    });
+    posterCard.appendChild(pBtn);
+    box.appendChild(posterCard);
+
     if (!lm.count && !mw.count && !wt.count && !hw.habits.length) {
       box.appendChild(el('div', 'notice', '还没有足够数据，先去<a href="javascript:void(0)" onclick="App.go(&quot;ledger&quot;)">记账</a>或<a href="javascript:void(0)" onclick="App.go(&quot;habits&quot;)">打卡</a>几天，洞察会自动生成。'));
     }
+  }
+
+  /* ==========================================================
+      新增 — 月度回顾海报（v41）：canvas 640×880 绘制 → 弹窗预览 + 下载
+     ========================================================== */
+  function openPoster(d) {
+    const W = 640, H = 880;
+    const mask = el('div', 'modal-mask');
+    const m = el('div', 'modal');
+    m.style.maxWidth = '420px';
+    m.innerHTML = `<h3>🖼️ ${d.month} 回顾海报</h3><div class="poster-wrap"></div>
+      <div class="modal-actions"><button class="m-btn cancel">关闭</button><button class="m-btn ok">⬇️ 保存图片</button></div>`;
+    mask.appendChild(m);
+    const close = () => mask.remove();
+    mask.onclick = e => { if (e.target === mask) close(); };
+    m.querySelector('.cancel').onclick = close;
+
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    cv.style.cssText = 'width:100%;height:auto;border-radius:12px;display:block';
+    m.querySelector('.poster-wrap').appendChild(cv);
+    const ctx = cv.getContext && cv.getContext('2d');
+    if (!ctx) { // jsdom 等无 canvas 实现的环境：降级为纯文字预览
+      cv.remove();
+      const alt = el('pre');
+      alt.style.cssText = 'font-size:12px;line-height:1.8;white-space:pre-wrap;background:var(--card-soft);padding:12px;border-radius:10px;color:var(--text)';
+      alt.textContent = [
+        `📊 ${d.month} 回顾`,
+        `收支：收入 ${C.fmtMoney(d.income)} · 支出 ${C.fmtMoney(d.expense)} · 结余 ${C.fmtMoney(d.balance)}`,
+        d.habitPct != null ? `习惯：完成率 ${d.habitPct}% · 活跃 ${d.habitDays} 天` : '',
+        d.moodAvg != null ? `心情：平均 ${d.moodAvg.toFixed(1)}/5 · 记录 ${d.moodDays} 天` : '',
+        `运动：${d.actDays} 天`,
+        d.bodyDelta != null ? `体重：${d.bodyDelta > 0 ? '+' : ''}${d.bodyDelta.toFixed(1)}kg` : ''
+      ].filter(Boolean).join('\n');
+      m.querySelector('.poster-wrap').appendChild(alt);
+      m.querySelector('.ok').onclick = () => C.Toast('当前环境不支持生成图片，可长按复制上方文字');
+      document.body.appendChild(mask);
+      return;
+    }
+
+    /* ---- 绘制 ---- */
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#6a8dff'); g.addColorStop(0.55, '#8f6aff'); g.addColorStop(1, '#ff7eb3');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // 装饰圆
+    ctx.globalAlpha = 0.12; ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(560, 90, 130, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(70, 790, 150, 0, 7); ctx.fill();
+    ctx.globalAlpha = 1;
+    // 标题区
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+    ctx.font = '700 44px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText(d.month + ' 月度回顾', W / 2, 110);
+    ctx.font = '400 22px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,.85)';
+    ctx.fillText('小王的工作台 · 每一帧都算数', W / 2, 152);
+    // 数据卡 2×2
+    const cards = [
+      { v: C.fmtMoney(d.balance), l: '本月结余', s: `收 ${C.fmtMoney(d.income)} · 支 ${C.fmtMoney(d.expense)}` },
+      d.habitPct != null ? { v: d.habitPct + '%', l: '习惯完成率', s: '活跃 ' + d.habitDays + ' 天' } : null,
+      d.moodAvg != null ? { v: d.moodAvg.toFixed(1) + '/5', l: '平均心情', s: '记录 ' + d.moodDays + ' 天' } : null,
+      { v: d.actDays + ' 天', l: '运动天数', s: d.bodyDelta != null ? '体重 ' + (d.bodyDelta > 0 ? '+' : '') + d.bodyDelta.toFixed(1) + 'kg' : '保持动能' }
+    ].filter(Boolean).slice(0, 4);
+    const cw = 270, ch = 180, gx = 40, gy = 200;
+    cards.forEach((c, i) => {
+      const x = gx + (i % 2) * (cw + 20), y = gy + Math.floor(i / 2) * (ch + 20);
+      ctx.fillStyle = 'rgba(255,255,255,.16)';
+      roundRect(ctx, x, y, cw, ch, 24); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'left';
+      ctx.font = '700 44px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText(c.v, x + 24, y + 82);
+      ctx.font = '600 22px "Segoe UI", system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,.9)';
+      ctx.fillText(c.l, x + 24, y + 122);
+      ctx.font = '400 18px "Segoe UI", system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,.72)';
+      ctx.fillText(c.s, x + 24, y + 154);
+    });
+    // 底部一句话
+    ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+    ctx.font = '600 24px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText('下个月，继续把生活过成想要的样子 ✦', W / 2, H - 70);
+    ctx.font = '400 18px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,.7)';
+    ctx.fillText(new Date().toLocaleDateString('zh-CN') + ' 生成', W / 2, H - 38);
+
+    m.querySelector('.ok').onclick = () => {
+      try {
+        cv.toBlob(blob => {
+          if (!blob) return C.Toast('生成失败');
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = `月度回顾_${d.month}.png`;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+          C.Toast('已保存 ✓');
+        }, 'image/png');
+      } catch (e) { C.Toast('生成失败：' + e.message); }
+    };
+    document.body.appendChild(mask);
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
   }
 
   /* ==========================================================
@@ -369,7 +529,7 @@
     const box = $('#panel'); box.innerHTML = '';
     const ph = el('div', 'page-head'); ph.innerHTML = `<div class="ph-ic">ℹ️</div><div><h2>关于</h2></div>`; box.appendChild(ph);
     const card = el('div', 'card');
-    card.innerHTML = `<div class="hero-card" style="border-radius:var(--r);margin-bottom:12px"><div><div style="font-size:20px;font-weight:800">小王的工作台</div><div style="opacity:.85;margin-top:4px">sunpad · v40</div></div></div>
+    card.innerHTML = `<div class="hero-card" style="border-radius:var(--r);margin-bottom:12px"><div><div style="font-size:20px;font-weight:800">小王的工作台</div><div style="opacity:.85;margin-top:4px">sunpad · v41</div></div></div>
       <div class="set-about">
         你的个人专属工作台 · 纯前端 PWA<br>
         涵盖 健身 / 舞蹈 / 创作 / 妆容 / 英语 / 粤语 / 阅读 / 数据 / 记账 / 提醒 / 菜谱 / 新闻 / 天气 / 经期 / 习惯 / 心情<br><br>
