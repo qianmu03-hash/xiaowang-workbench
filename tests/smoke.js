@@ -109,6 +109,70 @@ for (let round = 1; round <= 2; round++) {
   check('总览页有洞察入口', !!entry);
 }
 
+/* ---------- v40 快速见效：全局搜索 / 番茄钟 / 首页新卡片 ---------- */
+{
+  const btnS = win.document.getElementById('btnSearch');
+  const btnF = win.document.getElementById('btnFocus');
+  check('顶栏有搜索/番茄按钮', !!(btnS && btnF));
+
+  /* 点击 🔍 打开搜索 → 关键词出结果 → Enter 跳转关闭 */
+  const b1 = errors.length;
+  if (btnS) btnS.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  const ov = win.document.querySelector('.search-ov');
+  check('点击 🔍 打开搜索浮层', !!ov);
+  if (ov) {
+    const inp = ov.querySelector('.search-input');
+    inp.value = '记账';
+    inp.dispatchEvent(new win.Event('input', { bubbles: true }));
+    const items = ov.querySelectorAll('.sr-item');
+    check('搜索「记账」有结果', items.length > 0, items.length + ' 条');
+    inp.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    check('Enter 跳转后浮层关闭', !win.document.querySelector('.search-ov'));
+  }
+  check('搜索流程无报错', errors.length === b1, b1 + '→' + errors.length);
+
+  /* Ctrl+K 唤起 / Esc 关闭 */
+  const b2 = errors.length;
+  win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+  check('Ctrl+K 唤起搜索', !!win.document.querySelector('.search-ov'));
+  win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  check('Esc 关闭搜索', !win.document.querySelector('.search-ov'));
+  check('快捷键流程无报错', errors.length === b2, b2 + '→' + errors.length);
+
+  /* 番茄面板开关 */
+  const b3 = errors.length;
+  if (btnF) btnF.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  const pp = win.document.querySelector('.pomo-panel');
+  check('点击 🍅 打开番茄面板', !!pp);
+  check('番茄初始显示 25:00', !!(pp && pp.querySelector('.pomo-time').textContent === '25:00'),
+    pp ? pp.querySelector('.pomo-time').textContent : '无面板');
+  if (pp) pp.querySelector('.pomo-close').dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  check('番茄面板可关闭', !win.document.querySelector('.pomo-panel'));
+  check('番茄流程无报错', errors.length === b3, b3 + '→' + errors.length);
+
+  /* 首页倒数日 + 随手笔记 */
+  const b4 = errors.length;
+  win.App.go('home');
+  const panel = win.document.getElementById('panel');
+  const cdCard = panel.querySelector('.cd-list');
+  const noteCard = panel.querySelector('.note-wrap');
+  check('首页有倒数日卡片', !!cdCard);
+  check('首页有随手笔记卡片', !!noteCard);
+  if (noteCard) {
+    const nInp = noteCard.querySelector('.t-add input');
+    nInp.value = '冒烟测试笔记';
+    nInp.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    const txt = [...win.document.querySelectorAll('#panel .note-tx')].map(n => n.textContent);
+    check('回车保存笔记并即时显示', txt.includes('冒烟测试笔记'));
+  }
+  const cdAdd = panel.querySelector('.cd-add');
+  if (cdAdd) cdAdd.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  check('倒数日添加弹窗打开', !!win.document.querySelector('.modal-mask #cdTitle'));
+  const mask = win.document.querySelector('.modal-mask');
+  if (mask) mask.remove();
+  check('首页新功能无报错', errors.length === b4, b4 + '→' + errors.length);
+}
+
 console.log('\n汇总: ' + pass + ' 通过 / ' + fail + ' 失败');
 if (errors.length) {
   console.log('\n捕获到的错误（' + errors.length + '）:');

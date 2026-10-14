@@ -1,5 +1,5 @@
 /* 小王的工作台 — Service Worker：核心文件离线缓存 */
-const CACHE = 'sunpad-v39'; // 每次部署若业务文件有改动，必须 bump 此版本号，否则浏览器不会拉取新 SW
+const CACHE = 'sunpad-v40'; // 每次部署若业务文件有改动，必须 bump 此版本号，否则浏览器不会拉取新 SW
 const ASSETS = [
   './',
   './index.html',
@@ -34,6 +34,7 @@ const ASSETS = [
   './js/pages/daily.js',
   './js/pages/media.js',
   './js/pages/mine.js',
+  './js/quickwins.js',
   './js/boot.js',
   './icons/icon-192.png',
   './icons/icon-512.png'

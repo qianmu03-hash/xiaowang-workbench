@@ -42,6 +42,35 @@
     '专注当下，未来自然会来。'
   ];
 
+  /* ---------- v40：倒数日 / 随手笔记 ---------- */
+  let notesExpanded = false;
+
+  function openCountdownModal() {
+    const mask = el('div', 'modal-mask');
+    const m = el('div', 'modal');
+    m.innerHTML = `
+      <h3>⏳ 添加倒数日</h3>
+      <div class="modal-field"><label>名称</label><input id="cdTitle" maxlength="16" placeholder="如：生日 / 考试 / 纪念日"></div>
+      <div class="modal-field"><label>日期</label><input id="cdDate" type="date"></div>
+      <div class="modal-actions"><button class="m-btn cancel">取消</button><button class="m-btn ok">保存</button></div>`;
+    const close = () => mask.remove();
+    mask.onclick = e => { if (e.target === mask) close(); };
+    m.querySelector('.cancel').onclick = close;
+    m.querySelector('#cdDate').value = C.todayStr();
+    m.querySelector('.ok').onclick = () => {
+      const t = m.querySelector('#cdTitle').value.trim();
+      const d = m.querySelector('#cdDate').value;
+      if (!t) return C.Toast('请输入名称');
+      if (!d) return C.Toast('请选择日期');
+      const list = S.get('sunpad_countdowns', []);
+      list.push({ id: C.uid(), title: t, date: d });
+      S.set('sunpad_countdowns', list);
+      close(); C.Toast('倒数日已添加 ⏳'); renderHome();
+    };
+    mask.appendChild(m);
+    document.body.appendChild(mask);
+  }
+
   function renderHome() {
     const box = $('#panel');
     box.innerHTML = '';
@@ -81,6 +110,35 @@
     const sr = el('div', 'status-row');
     chips.forEach(c => sr.appendChild(el('div', 'status-chip', `<span>${c.ic}</span>${c.t}`)));
     box.appendChild(sr);
+
+    /* 倒数日（v40）：未来的最近在前，过去的最近在前，最多 4 条 */
+    const cds = S.get('sunpad_countdowns', []);
+    const cdWrap = el('div', 'cd-list');
+    if (!cds.length) {
+      cdWrap.appendChild(el('div', 'cd-empty', '还没有倒数日 · 记录生日 / 纪念日 / 考试'));
+    } else {
+      const today = C.todayStr();
+      const fut = cds.filter(d => d.date >= today).sort((a, b) => (a.date < b.date ? -1 : 1));
+      const past = cds.filter(d => d.date < today).sort((a, b) => (a.date > b.date ? -1 : 1));
+      fut.concat(past).slice(0, 4).forEach(d => {
+        const days = diffDays(today, d.date);
+        const near = days >= 0 && days <= 7;
+        const row = el('div', 'cd-item');
+        row.innerHTML = `<span class="cd-title">${C.esc(d.title)}</span>
+          <span class="cd-date">${d.date}</span>
+          <span class="cd-days${near ? ' near' : ''}">${days > 0 ? '还有 ' + days + ' 天' : days === 0 ? '就是今天' : '已过 ' + (-days) + ' 天'}</span>
+          <button class="cd-del" title="删除">✕</button>`;
+        row.querySelector('.cd-del').onclick = () => {
+          S.set('sunpad_countdowns', cds.filter(x => x.id !== d.id));
+          renderHome();
+        };
+        cdWrap.appendChild(row);
+      });
+    }
+    const cdAdd = el('button', 'cd-add', '＋ 添加倒数日');
+    cdAdd.onclick = openCountdownModal;
+    cdWrap.appendChild(cdAdd);
+    box.appendChild(card('倒数日', '⏳', cdWrap));
 
     /* 统计卡 */
     const tasks = tasksToday();
@@ -171,6 +229,51 @@
       c.appendChild(row);
       return c;
     })());
+
+    /* 随手笔记（v40）：回车即存，最新 5 条，可展开 */
+    const notes = S.get('sunpad_notes', []);
+    const nWrap = el('div', 'note-wrap');
+    const nAdd = el('div', 't-add');
+    const nInp = el('input');
+    nInp.placeholder = '随手记点什么…（回车保存）';
+    nInp.maxLength = 120;
+    const nBtn = el('button', '', '记下');
+    const saveNote = () => {
+      const v = nInp.value.trim();
+      if (!v) return;
+      const list = S.get('sunpad_notes', []);
+      list.unshift({ id: C.uid(), text: v, ts: Date.now() });
+      if (list.length > 200) list.length = 200;
+      S.set('sunpad_notes', list);
+      C.Toast('已记下 ✏️');
+      renderHome();
+    };
+    nBtn.onclick = saveNote;
+    nInp.onkeydown = e => { if (e.key === 'Enter') saveNote(); };
+    nAdd.append(nInp, nBtn);
+    nWrap.appendChild(nAdd);
+    if (!notes.length) {
+      nWrap.appendChild(el('div', 'cd-empty', '还没有笔记 · 写点什么吧'));
+    } else {
+      (notesExpanded ? notes.slice(0, 50) : notes.slice(0, 5)).forEach(n => {
+        const row = el('div', 'note-item');
+        const d = new Date(n.ts);
+        const time = (d.getMonth() + 1) + '-' + d.getDate() + ' ' +
+          String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+        row.innerHTML = `<span class="note-tx">${C.esc(n.text)}</span><span class="note-time">${time}</span><button class="note-del" title="删除">✕</button>`;
+        row.querySelector('.note-del').onclick = () => {
+          S.set('sunpad_notes', notes.filter(x => x.id !== n.id));
+          renderHome();
+        };
+        nWrap.appendChild(row);
+      });
+      if (notes.length > 5) {
+        const more = el('button', 'note-more', notesExpanded ? '收起' : '展开全部（' + notes.length + ' 条）');
+        more.onclick = () => { notesExpanded = !notesExpanded; renderHome(); };
+        nWrap.appendChild(more);
+      }
+    }
+    box.appendChild(card('随手笔记', '✏️', nWrap));
   }
 
   function quickAction(act) {
